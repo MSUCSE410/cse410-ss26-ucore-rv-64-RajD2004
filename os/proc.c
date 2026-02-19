@@ -94,7 +94,6 @@ void scheduler(void)
 					p->start_time = get_cycle();
 				}
 
-				p->start_time = 0;
 				p->state = RUNNING;
 				current_proc = p;
 				swtch(&idle.context, &p->context);
