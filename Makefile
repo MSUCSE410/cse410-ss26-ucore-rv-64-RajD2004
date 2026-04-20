@@ -76,6 +76,9 @@ $(HEADER_DEP): $(BUILDDIR)/$K/%.d : $K/%.c
         sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
         rm -f $@.$$$$
 
+ifeq ($(BASE), 0)
+INIT_PROC ?= ch$(CHAPTER)_usertest
+endif
 INIT_PROC ?= usershell
 
 os/link_app.o: $K/link_app.S
