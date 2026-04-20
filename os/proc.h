@@ -2,6 +2,7 @@
 #define PROC_H
 
 #include "types.h"
+#include "riscv.h"
 
 #define NPROC (16)
 
@@ -39,7 +40,11 @@ struct proc {
 	* LAB1: you may need to add some new fields here
 	*/
 	unsigned int syscall_times[500]; 
-	uint64 start_time; 
+	uint64 start_time;
+	
+	//2 new fields 
+	pagetable_t pagetable;
+	uint64 max_page;
 };
 
 /*

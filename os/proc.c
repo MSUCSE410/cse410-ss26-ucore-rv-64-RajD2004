@@ -131,6 +131,9 @@ void exit(int code)
 	struct proc *p = curr_proc();
 	infof("proc %d exit with %d", p->pid, code);
 	p->state = UNUSED;
+	uvmunmap(p->pagetable, TRAMPOLINE, 1, 0);
+	uvmunmap(p->pagetable, TRAPFRAME, 1, 0);
+	uvmfree(p->pagetable, p->max_page);
 	finished();
 	sched();
 }
