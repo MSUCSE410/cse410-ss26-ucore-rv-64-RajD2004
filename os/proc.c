@@ -47,19 +47,25 @@ int allocpid()
 
 struct proc *fetch_task()
 {
-	int index = pop_queue(&task_queue);
-	if (index < 0) {
-		debugf("No task to fetch\n");
-		return NULL;
+	struct proc *min_proc = NULL;
+	for (struct proc *p = pool; p < &pool[NPROC]; p++) {
+		if (p->state == RUNNABLE) {
+			if (min_proc == NULL || p->stride < min_proc->stride) {
+				min_proc = p;
+			}
+		}
 	}
-	debugf("fetch task %d(pid=%d) to task queue\n", index, pool[index].pid);
-	return pool + index;
+	if (min_proc == NULL)
+		return NULL;
+	min_proc->stride += min_proc->pass;
+	return min_proc;
 }
 
+//change add tast 
 void add_task(struct proc *p)
 {
-	push_queue(&task_queue, p - pool);
-	debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
+	// stride scheduling scans pool directly, no queue needed
+	debugf("add task %d(pid=%d)\n", p - pool, p->pid);
 }
 
 // Look in the process table for an UNUSED proc.
@@ -89,6 +95,9 @@ found:
 	memset((void *)p->trapframe, 0, TRAP_PAGE_SIZE);
 	p->context.ra = (uint64)usertrapret;
 	p->context.sp = p->kstack + KSTACK_SIZE;
+	p->stride = 0;
+	p->priority = 16;
+	p->pass = BIG_STRIDE / 16;
 	return p;
 }
 

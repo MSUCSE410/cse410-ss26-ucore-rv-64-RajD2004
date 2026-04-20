@@ -94,15 +94,92 @@ uint64 sys_wait(int pid, uint64 va)
 
 uint64 sys_spawn(uint64 va)
 {
-	// TODO: your job is to complete the sys call
-	return -1;
+	struct proc *p = curr_proc();
+	char name[200];
+	copyinstr(p->pagetable, name, va, 200);
+
+	int id = get_id_by_name(name);
+	if (id < 0)
+		return -1;
+
+	struct proc *np = allocproc();
+	if (np == 0)
+		return -1;
+
+	loader(id, np);
+	np->parent = p;
+	add_task(np);
+	return np->pid;
 }
 
-uint64 sys_set_priority(long long prio){
-    // TODO: your job is to complete the sys call
-    return -1;
+uint64 sys_set_priority(long long prio)
+{
+	if (prio < 2)
+		return -1;
+	struct proc *p = curr_proc();
+	p->priority = prio;
+	p->pass = BIG_STRIDE / prio;
+	return prio;
 }
 
+uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
+{
+	if (!PGALIGNED(start))
+		return -1;
+	if (len == 0)
+		return 0;
+	if (len > 1024UL * 1024 * 1024)
+		return -1;
+	if (port & ~0x7)
+		return -1;
+	if ((port & 0x7) == 0)
+		return -1;
+
+	struct proc *p = curr_proc();
+	uint64 end = PGROUNDUP(start + len);
+	int perm = PTE_U | ((port & 0x7) << 1);
+
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		if (walkaddr(p->pagetable, va) != 0)
+			return -1;
+	}
+
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		void *pa = kalloc();
+		if (pa == 0)
+			return -1;
+		memset(pa, 0, PGSIZE);
+		if (mappages(p->pagetable, va, PGSIZE, (uint64)pa, perm) != 0) {
+			kfree(pa);
+			return -1;
+		}
+	}
+
+	uint64 new_max = end / PGSIZE;
+	if (new_max > p->max_page)
+		p->max_page = new_max;
+	
+	return 0;
+}
+
+uint64 sys_munmap(uint64 start, uint64 len)
+{
+	if (!PGALIGNED(start))
+		return -1;
+	if (len == 0)
+		return 0;
+
+	struct proc *p = curr_proc();
+	uint64 end = PGROUNDUP(start + len);
+
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		if (walkaddr(p->pagetable, va) == 0)
+			return -1;
+	}
+
+	uvmunmap(p->pagetable, start, (end - start) / PGSIZE, 1);
+	return 0;
+}
 
 extern char trap_page[];
 
@@ -148,6 +225,18 @@ void syscall()
 	case SYS_spawn:
 		ret = sys_spawn(args[0]);
 		break;
+	case SYS_mmap:
+		ret = sys_mmap(args[0], args[1], args[2], args[3], args[4]);
+		break;
+	case SYS_munmap:
+		ret = sys_munmap(args[0], args[1]);
+		break;
+		
+	//new case statement 
+	case SYS_setpriority:
+		ret = sys_set_priority(args[0]);
+		break;
+
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);
