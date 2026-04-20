@@ -6,6 +6,17 @@
 #include "timer.h"
 #include "trap.h"
 
+#define ST_MODE_DIR  0x040000
+#define ST_MODE_FILE 0x100000
+
+struct Stat {
+	uint64 dev;
+	uint64 ino;
+	uint32 mode;
+	uint32 nlink;
+	uint64 pad[7];
+};
+
 uint64 console_write(uint64 va, uint64 len)
 {
 	struct proc *p = curr_proc();
@@ -179,17 +190,73 @@ uint64 sys_close(int fd)
 
 int sys_fstat(int fd,uint64 stat){
 	//TODO: your job is to complete the syscall
-	return -1;
+	struct proc *p = curr_proc();
+	if (fd < 0 || fd >= FD_BUFFER_SIZE)
+		return -1;
+	struct file *f = p->files[fd];
+	if (f == NULL || f->type != FD_INODE)
+		return -1;
+	ivalid(f->ip);
+	struct Stat st;
+	memset(&st, 0, sizeof(st));
+	st.dev = 0;
+	st.ino = f->ip->inum;
+	st.mode = (f->ip->type == T_DIR) ? ST_MODE_DIR : ST_MODE_FILE;
+	st.nlink = f->ip->nlink;
+	if (copyout(p->pagetable, stat, (char *)&st, sizeof(st)) < 0)
+		return -1;
+	return 0;
 }
 
 int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath, uint64 flags){
 	//TODO: your job is to complete the syscall
-	return -1;
+	struct proc *p = curr_proc();
+	char old[MAXPATH], new[MAXPATH];
+	copyinstr(p->pagetable, old, oldpath, MAXPATH);
+	copyinstr(p->pagetable, new, newpath, MAXPATH);
+	if (strncmp(old, new, MAXPATH) == 0)
+		return -1;
+	struct inode *ip = namei(old);
+	if (ip == 0)
+		return -1;
+	ivalid(ip);
+	if (ip->type != T_FILE) {
+		iput(ip);
+		return -1;
+	}
+	struct inode *dp = root_dir();
+	if (dirlink(dp, new, ip->inum) < 0) {
+		iput(dp);
+		iput(ip);
+		return -1;
+	}
+	ip->nlink++;
+	iupdate(ip);
+	iput(dp);
+	iput(ip);
+	return 0;
 }
 
 int sys_unlinkat(int dirfd, uint64 name, uint64 flags){
 	//TODO: your job is to complete the syscall
-	return -1;
+	struct proc *p = curr_proc();
+	char path[MAXPATH];
+	copyinstr(p->pagetable, path, name, MAXPATH);
+	struct inode *ip = namei(path);
+	if (ip == 0)
+		return -1;
+	ivalid(ip);
+	struct inode *dp = root_dir();
+	if (dirunlink(dp, path) < 0) {
+		iput(dp);
+		iput(ip);
+		return -1;
+	}
+	ip->nlink--;
+	iupdate(ip);
+	iput(dp);
+	iput(ip);
+	return 0;
 }
 
 extern char trap_page[];
@@ -247,6 +314,7 @@ void syscall()
 		break;
 	case SYS_unlinkat:
 	    ret = sys_unlinkat(args[0],args[1],args[2]);
+		break;
 	case SYS_spawn:
 		ret = sys_spawn(args[0]);
 		break;
